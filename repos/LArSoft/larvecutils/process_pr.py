@@ -77,6 +77,7 @@ LARSOFT_REPOS =  ["larana",
                   "larpandora",
                   "larpandoracontent",
                   "larsim",
+                  "larsimrad",
                   "larreco",
                   "larutils",
                   "larvecutils",
@@ -819,18 +820,18 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
           signatures["tests"] = "pending"
 
     # Check L2 signoff for users in this PR signing categories
-    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems  and [x for x in CMSSW_L2[commenter] if x in signing_categories]:
+    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems  and [x for x in CMSSW_L2.get(commenter) if x in signing_categories]:
       ctype = ""
       selected_cats = []
       if re.match("^([+]1|approve[d]?|sign|signed)$", first_line, re.I):
         ctype = "+1"
-        selected_cats = CMSSW_L2[commenter]
+        selected_cats = CMSSW_L2.get(commenter)
       elif re.match("^([-]1|reject|rejected)$", first_line, re.I):
         ctype = "-1"
-        selected_cats = CMSSW_L2[commenter]
+        selected_cats = CMSSW_L2.get(commenter)
       elif re.match("^[+-][a-z][a-z0-9]+$", first_line, re.I):
         category_name = first_line[1:].lower()
-        if category_name in CMSSW_L2[commenter]:
+        if category_name in CMSSW_L2.get(commenter):
           ctype = first_line[0]+"1"
           selected_cats = [ category_name ]
       elif re.match("^(reopen)$", first_line, re.I):
