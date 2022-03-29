@@ -393,16 +393,17 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
   larsoftorg=gh.get_organization('LArSoft')
   larsoftteams=larsoftorg.get_teams()
   larsoft_core=larsoftteams[0]
-  larsoft_l1=larsoftteams[1]
-  larsoft_l2=larsoftteams[2]
+  larsoft_doc=larsoftteams[1]
+  larsoft_l1=larsoftteams[2]
+  larsoft_l2=larsoftteams[3]
   larsoft_core_mems = [ mem.login for mem in larsoft_core.get_members() ]
   larsoft_l1_mems = [ mem.login for mem in larsoft_l1.get_members() ] + CMSSW_L1
   larsoft_l2_mems = [ mem.login for mem in larsoft_l2.get_members() ] 
   larsoft_commenters = list(set(larsoft_core_mems + larsoft_l1_mems + larsoft_l2_mems))
-  L1_CATS=CMSSW_L2['LArSoft/%s' % larsoft_l1.slug]
+  L1_CATS=CMSSW_L2.get('LArSoft/%s' % larsoft_l1.slug)
   for mem in larsoft_l1_mems:
       CMSSW_L2[mem]=L1_CATS
-  L2_CATS=CMSSW_L2['LArSoft/%s' % larsoft_l2.slug]
+  L2_CATS=CMSSW_L2.get('LArSoft/%s' % larsoft_l2.slug)
   for mem in larsoft_l2_mems:
       if mem in larsoft_l1_mems:
           CMSSW_L2[mem].extend(L2_CATS)

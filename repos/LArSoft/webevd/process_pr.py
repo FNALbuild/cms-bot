@@ -77,18 +77,26 @@ LARSOFT_REPOS =  ["larana",
                   "larpandora",
                   "larpandoracontent",
                   "larsim",
+                  "larsimrad",
                   "larreco",
                   "larutils",
+                  "larvecutils",
                   "larwirecell",
                   "larsoft",
                   "larsoftobj",
                   ]
-LAR_PR_PATTERN=format('(LArSoft/+(%(repos)s)#[0-9]+|(%(repos)s)#[0-9]+|#[0-9]+|https://github.com/+[a-zA-Z0-9_-]+/+(%(repos)s)/+pull/+[0-9]+)',
+LAR_PR_PATTERN=format('(LArSoft/+(%(repos)s)#[0-9]+|(%(repos)s)#[0-9]+|#[0-9]+|https://github.com/LArSoft/(%(repos)s)/+pull/+[0-9]+)',
                       repos='|'.join(LARSOFT_REPOS))
 REGEX_TEST_PRP = re.compile(LAR_PR_PATTERN, re.I)
 
-TEST_REGEXP_LAR_PR = format("^\s*((@|)FNALbuild\s*[,]*\s+|)(please\s*[,]*\s+|)trigger\s+build((\s+with\s+pull\s+request[s]?\s+(%(lar_pr)s(\s*,\s*%(lar_pr)s)*))|)\s*$", 
-                     lar_pr=LAR_PR_PATTERN)
+
+OTHER_PR_PATTERN='(https://github.com/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+/pull/[0-9]+|[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+#[0-9]+)'
+REGEX_OTHER_PR_PATTERN = re.compile(OTHER_PR_PATTERN, re.I)
+assert(REGEX_OTHER_PR_PATTERN.match('https://github.com/DUNE/dunereco/pull/6'))
+assert(REGEX_OTHER_PR_PATTERN.match('DUNE/dunereco#6'))
+
+TEST_REGEXP_LAR_PR = format("^\s*((@|)FNALbuild\s*[,]*\s+|)(please\s*[,]*\s+|)trigger\s+build((\s+with\s+pull\s+request[s]?\s+(%(lar_pr)s(\s*,\s*(%(lar_pr)s|%(oth_pr)s))*))|)(.*)$",
+                     lar_pr=LAR_PR_PATTERN, oth_pr=OTHER_PR_PATTERN)
 REGEX_TEST_REG_LAR_PR = re.compile(TEST_REGEXP_LAR_PR, re.I)
 
 assert(REGEX_TEST_REG_LAR_PR.match(r'trigger build'))
@@ -97,6 +105,10 @@ assert(REGEX_TEST_REG_LAR_PR.match(r'FNALbuild please trigger build'))
 assert(REGEX_TEST_REG_LAR_PR.match(r'FNALbuild, please trigger build'))
 assert(REGEX_TEST_REG_LAR_PR.match(r' trigger build with pull request #1'))
 assert(REGEX_TEST_REG_LAR_PR.match(r' trigger build with pull requests #1, larg4#2, larsoft/larana#3, https://github.com/LArSoft/larcore/pull/2'))
+assert(REGEX_TEST_REG_LAR_PR.match(r'trigger build with pull requests #15, https://github.com/DUNE/dunereco/pull/6, DUNE/dunereco#6,'))
+m=REGEX_TEST_REG_LAR_PR.match(r'trigger build with pull requests #15, larg4#2, larsoft/larana#3, https://github.com/LArSoft/larcore/pull/2, DUNE/dunereco#6, ')
+assert(m)
+
 
 TEST_REGEXP_LAR_BR = format("^\s*((@|)FNALbuild\s*[,]*\s+|)(please\s*[,]*\s+|)trigger\s+build(\s+using\s+branchnames?\s+(([/a-zA-Z0-9_-]+)(\s*(,(\s*[/a-zA-Z0-9_-]+)))*)\s+in\s+repo[s]?\s+((%(larrepos)s)((\s*,\s*((%(larrepos)s)))*))|)\s*$",
                     larrepos='|'.join(LARSOFT_REPOS))
@@ -293,6 +305,7 @@ def check_test_cmd(first_line, repo):
 def check_test_cmd_new(first_line, repo):
   m = REGEX_TEST_REG_NEW.match(first_line)
   if m:
+    print(m.groups())
     wfs = ""
     prs= []
     cmssw_que = ""
@@ -380,16 +393,17 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
   larsoftorg=gh.get_organization('LArSoft')
   larsoftteams=larsoftorg.get_teams()
   larsoft_core=larsoftteams[0]
-  larsoft_l1=larsoftteams[1]
-  larsoft_l2=larsoftteams[2]
+  larsoft_doc=larsoftteams[1]
+  larsoft_l1=larsoftteams[2]
+  larsoft_l2=larsoftteams[3]
   larsoft_core_mems = [ mem.login for mem in larsoft_core.get_members() ]
   larsoft_l1_mems = [ mem.login for mem in larsoft_l1.get_members() ] + CMSSW_L1
   larsoft_l2_mems = [ mem.login for mem in larsoft_l2.get_members() ] 
   larsoft_commenters = list(set(larsoft_core_mems + larsoft_l1_mems + larsoft_l2_mems))
-  L1_CATS=CMSSW_L2['LArSoft/%s' % larsoft_l1.slug]
+  L1_CATS=CMSSW_L2.get('LArSoft/%s' % larsoft_l1.slug)
   for mem in larsoft_l1_mems:
       CMSSW_L2[mem]=L1_CATS
-  L2_CATS=CMSSW_L2['LArSoft/%s' % larsoft_l2.slug]
+  L2_CATS=CMSSW_L2.get('LArSoft/%s' % larsoft_l2.slug)
   for mem in larsoft_l2_mems:
       if mem in larsoft_l1_mems:
           CMSSW_L2[mem].extend(L2_CATS)
@@ -818,18 +832,18 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
           signatures["tests"] = "pending"
 
     # Check L2 signoff for users in this PR signing categories
-    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems  and [x for x in CMSSW_L2[commenter] if x in signing_categories]:
+    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems  and [x for x in CMSSW_L2.get(commenter) if x in signing_categories]:
       ctype = ""
       selected_cats = []
       if re.match("^([+]1|approve[d]?|sign|signed)$", first_line, re.I):
         ctype = "+1"
-        selected_cats = CMSSW_L2[commenter]
+        selected_cats = CMSSW_L2.get(commenter)
       elif re.match("^([-]1|reject|rejected)$", first_line, re.I):
         ctype = "-1"
-        selected_cats = CMSSW_L2[commenter]
+        selected_cats = CMSSW_L2.get(commenter)
       elif re.match("^[+-][a-z][a-z0-9]+$", first_line, re.I):
         category_name = first_line[1:].lower()
-        if category_name in CMSSW_L2[commenter]:
+        if category_name in CMSSW_L2.get(commenter):
           ctype = first_line[0]+"1"
           selected_cats = [ category_name ]
       elif re.match("^(reopen)$", first_line, re.I):
@@ -1031,14 +1045,16 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
     # trigger the tests and inform it in the thread.
     if trigger_test_on_signature and has_categories_approval: tests_requested = True
     if tests_requested:
-      prs = ['%s#%s' % (repository,prId)]
+      cpr = '%s#%s' % (repository,prId)
+      prs = [cpr]
       for p in [x for x in cmsdist_pr.replace(' ','').split(',') if x]:
         if '#' not in p: p='%s/cmsdist#%s' % (repo_org, p)
         prs.append(p)
       for p in [x for x in cmssw_prs.replace(' ','').split(',') if x]:
         if '#' not in p: p='%s/larsoft#%s' % (repo_org, p)
-        if repo_org not in p: p='%s/%s' % (repo_org,p)
-        prs.append(p)
+        if '/' not in p: p='%s/%s' % (repo_org,p)
+        if p != cpr :
+            prs.append(p)
       for xpr in prs:
         repo_name,pr_num = xpr.split('#',1)
         pr_num = int(pr_num)
