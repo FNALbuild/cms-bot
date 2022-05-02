@@ -832,7 +832,7 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
           signatures["tests"] = "pending"
 
     # Check L2 signoff for users in this PR signing categories
-    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems  and [x for x in CMSSW_L2.get(commenter) if x in signing_categories]:
+    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems and CMSSW_L2.get(commenter) and [x for x in CMSSW_L2.get(commenter) if x in signing_categories]:
       ctype = ""
       selected_cats = []
       if re.match("^([+]1|approve[d]?|sign|signed)$", first_line, re.I):
