@@ -15,6 +15,11 @@ from socket import setdefaulttimeout
 from _py2with3compatibility import run_cmd
 from github import Github
 
+import yaml
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
 
 try: from categories import COMMENT_CONVERSION
 except: COMMENT_CONVERSION={}
@@ -141,13 +146,18 @@ def get_last_commit(pr):
   return last_commit
 
 #Read a yaml file
-def read_repo_file(repo_config, repo_file, default=None):
-  import yaml
+def read_repo_file(repo_config, repo_file, default=None, is_yaml=True):
   file_path = join(repo_config.CONFIG_DIR, repo_file)
   contents = default
   if exists(file_path):
-    contents = (yaml.load(file(file_path), Loader=yaml.FullLoader))
-    if not contents: contents = default
+    with open(file_path, "r") as f:
+        if is_yaml:
+            contents = yaml.load(f, Loader=Loader)
+        else:
+            contents = load(f)
+
+    if not contents:
+        contents = default
   return contents
 
 #
@@ -249,6 +259,13 @@ def get_assign_categories(line):
     return (assgin_type.strip(), new_cats)
   return ('', [])
 
+def get_package_categories(package):
+    cats = []
+    for cat, packages in list(CMSSW_CATEGORIES.items()):
+        if package in packages:
+            cats.append(cat)
+    return cats
+
 def ignore_issue(repo_config, repo, issue):
   if issue.number in repo_config.IGNORE_ISSUES: return True
   if (repo.full_name in repo_config.IGNORE_ISSUES) and (issue.number in repo_config.IGNORE_ISSUES[repo.full_name]):
@@ -256,7 +273,7 @@ def ignore_issue(repo_config, repo, issue):
   if re.match(BUILD_REL, issue.title):
     return True
   if issue.body:
-    if re.match(CMSBOT_IGNORE_MSG, issue.body.encode("ascii", "ignore").split("\n",1)[0].strip() ,re.I):
+    if re.match(CMSBOT_IGNORE_MSG, issue.body.encode("ascii", "ignore").decode().split("\n",1)[0].strip() ,re.I):
       return True
   return False
 
@@ -381,7 +398,7 @@ def cmssw_file2Package(repo_config, filename):
 
 def get_jenkins_job(issue):
   test_line=""
-  for line in [l.strip() for l in issue.body.encode("ascii", "ignore").split("\n")]:
+  for line in [l.strip() for l in issue.body.encode("ascii", "ignore").decode().split("\n")]:
     if line.startswith("Build logs are available at:"): test_line=line
   if test_line:
     test_line=test_line.split("Build logs are available at: ",1)[-1].split("/")
@@ -426,6 +443,7 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
   create_test_property = False
   repo_cache = {repository: repo}
   packages = set([])
+  package_categories = {}
   create_external_issue = False
   add_external_category = False
   signing_categories = set([])
@@ -443,7 +461,7 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
   REGEX_EX_ENABLE_TESTS='^enable\s+(%s)(\s*,\s*(%s))*$' % (known_enable_tests, known_enable_tests)
   last_commit_date = None
   push_test_issue = False
-  requestor = issue.user.login.encode("ascii", "ignore")
+  requestor = issue.user.login.encode("ascii", "ignore").decode()
   ignore_tests = []
   enabled_tests = []
   if issue.pull_request:
@@ -494,9 +512,11 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
 
     print("Following packages affected:")
     print("\n".join(packages))
-    pkg_categories = set([category for package in packages
-                              for category, category_packages in list(CMSSW_CATEGORIES.items())
-                              if package in category_packages])
+    for package in packages:
+        package_categories[package] = set([])
+        for category in get_package_categories(package):
+            package_categories[package].add(category)
+            pkg_categories.add(category)
     signing_categories.update(pkg_categories)
 
     # For PR, we always require tests.
@@ -615,10 +635,10 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
   all_comments = [issue]
   for c in issue.get_comments(): all_comments.append(c)
   for comment in all_comments:
-    commenter = comment.user.login.encode("ascii", "ignore")
+    commenter = comment.user.login.encode("ascii", "ignore").decode()
     valid_commenter = commenter in TRIGGER_PR_TESTS + larsoft_l2_mems + larsoft_l1_mems + larsoft_core_mems + releaseManagers + [repo_org] + larsoft_commenters
     if (not valid_commenter) and (requestor!=commenter): continue
-    comment_msg = comment.body.encode("ascii", "ignore") if comment.body else ""
+    comment_msg = comment.body.encode("ascii", "ignore").decode() if comment.body else ""
     if (commenter in COMMENT_CONVERSION) and (comment.created_at<=COMMENT_CONVERSION[commenter]['comments_before']):
       orig_msg = comment_msg
       for cmt in COMMENT_CONVERSION[commenter]['comments']:
@@ -832,7 +852,7 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
           signatures["tests"] = "pending"
 
     # Check L2 signoff for users in this PR signing categories
-    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems  and [x for x in CMSSW_L2.get(commenter) if x in signing_categories]:
+    if commenter in larsoft_l2_mems or commenter in larsoft_core_mems and CMSSW_L2.get(commenter) and [x for x in CMSSW_L2.get(commenter) if x in signing_categories]:
       ctype = ""
       selected_cats = []
       if re.match("^([+]1|approve[d]?|sign|signed)$", first_line, re.I):
@@ -918,7 +938,7 @@ def process_pr(repo_config, gh, repo, issue, dryRun, cmsbuild_user=None, force=F
         dryRun=True
         break
 
-  old_labels = set([x.name.encode("ascii", "ignore") for x in issue.labels])
+  old_labels = set([x.name.encode("ascii", "ignore").decode() for x in issue.labels])
   print("Stats:",backport_pr_num,extra_labels)
   print("Old Labels:",sorted(old_labels))
   print("Compilation Warnings: ",comp_warnings)
