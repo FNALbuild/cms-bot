@@ -24,6 +24,7 @@ EXTERNAL_REPOS =  [
                   "LArSoft/larexamples",
                   "LArSoft/lareventdisplay",
                   "LArSoft/larg4",
+                  "LArSoft/larnusystematics",
                   "LArSoft/larpandora",
                   "LArSoft/larpandoracontent",
                   "LArSoft/larsim",
